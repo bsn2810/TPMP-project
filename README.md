@@ -409,7 +409,4 @@ All physics lives in `physics.js` and `solver.js`. The other files only display 
 - Artagnan Singh
 - Himanshu Shukla
 
-## License
 
-<!-- Choose a license before publishing (for example MIT) and add a LICENSE file.
-     Without one, others may view the code but have no permission to reuse it. -->
