@@ -37,11 +37,7 @@ Processing*.
 
 The simulator is published with **GitHub Pages** and runs in any modern browser (Chrome, Edge, Firefox, Safari).
 
-### Deploying with GitHub Pages
-1. Push the repository to GitHub, with `index.html` in the repository root.
-2. Go to **Settings → Pages**.
-3. Under **Build and deployment**, choose **Deploy from a branch**, select `main` and `/ (root)`, and save.
-4. After a minute the simulator is live at `https://<your-username>.github.io/<repository-name>/`.
+[Simulator](https://bsn2810.github.io/TPMP-project/)
 
 > **Graphs:** the plots use [Plotly](https://plotly.com/javascript/), loaded from a CDN, so no library files need to
 > be committed.
