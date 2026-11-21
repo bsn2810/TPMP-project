@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Particle Settling Simulator</title>
+  <link rel="stylesheet" href="css/style.css?v=2026112204">
+  <!-- Plotly (graphs). Loaded from a CDN: needs an internet connection. -->
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+</head>
+<body>
+
+<header class="top">
+  <div class="title-block">
+    <h1>Particle Settling Simulator</h1>
+    <p class="sub">Transport Phenomena in Materials Processing · MS2280 · Project 5</p>
+  </div>
+  <p class="intro">
+    One rigid particle is released from rest in a stationary Newtonian fluid inside one vertical column.
+    Weight, buoyancy and drag enter Newton's second law, <span class="eq">ρ<sub>p</sub>V<sub>p</sub> dv/dt = (ρ<sub>p</sub> − ρ<sub>f</sub>)gV<sub>p</sub> − F<sub>D</sub>(v)</span>,
+    which is integrated with fourth-order Runge–Kutta. The terminal velocity comes from the selected drag law, and the
+    wall, concentration and shape corrections can be switched on independently.
+  </p>
+</header>
+
+<main class="layout">
+  <!-- ============================ LEFT: INPUTS ============================ -->
+  <aside class="panel left" aria-label="Inputs">
+    <div class="card">
+      <div class="card-head"><h2>Preset</h2></div>
+      <select id="preset" class="full">
+        <option value="">— choose an example —</option>
+        <option value="glycerol">Glass bead in glycerol (Stokes regime)</option>
+        <option value="sand">Sand grain in water (intermediate regime)</option>
+        <option value="steel">Steel ball in water (Newton regime)</option>
+        <option value="pe">Polyethylene bead in water (rises)</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Particle</h2></div>
+      <label class="field"><span>Diameter d <em>(volume-equivalent if non-spherical)</em></span>
+        <div class="inp"><input id="d" type="number" step="any" min="0" value="1">
+          <select id="dUnit"><option value="mm">mm</option><option value="um">µm</option></select></div></label>
+      <label class="field"><span>Density ρ<sub>p</sub></span>
+        <div class="inp"><input id="rhoP" type="number" step="any" min="0" value="2500"><span class="unit">kg/m³</span></div></label>
+      <label class="field"><span>Sphericity ψ <em id="psiHint">(enable the non-spherical toggle)</em></span>
+        <div class="inp"><input id="psi" type="number" step="0.01" min="0.05" max="1" value="1" disabled><span class="unit">–</span></div></label>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Fluid</h2></div>
+      <label class="field"><span>Density ρ<sub>f</sub></span>
+        <div class="inp"><input id="rhoF" type="number" step="any" min="0" value="1260"><span class="unit">kg/m³</span></div></label>
+      <label class="field"><span>Dynamic viscosity µ</span>
+        <div class="inp"><input id="mu" type="number" step="any" min="0" value="1.41">
+          <select id="muUnit"><option value="Pas">Pa·s</option><option value="mPas">mPa·s</option></select></div></label>
+      <label class="field"><span>Gravity g</span>
+        <div class="inp"><input id="g" type="number" step="any" min="0" value="9.81"><span class="unit">m/s²</span></div></label>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Column</h2></div>
+      <label class="field"><span>Height H</span>
+        <div class="inp"><input id="H" type="number" step="any" min="0" value="0.5"><span class="unit">m</span></div></label>
+      <label class="field"><span>Internal diameter D <em id="DHint">(enable wall effects to change)</em></span>
+        <div class="inp"><input id="Dmm" type="number" step="any" min="0" value="50" disabled><span class="unit">mm</span></div></label>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Initial condition</h2></div>
+      <label class="field"><span>Initial velocity v₀ <em>(entry speed in the direction of motion; notes use v₀ = 0)</em></span>
+        <div class="inp"><input id="v0" type="number" step="any" min="0" value="0"><span class="unit">m/s</span></div></label>
+      <div class="kv"><span>v₀ / v<sub>t</sub> (final terminal velocity)</span><b id="kV0Ratio">0</b></div>
+      <div class="btn-row">
+        <button type="button" id="btnV0Rest">Start from rest</button>
+        <button type="button" id="btnV0Half">v₀ = ½ v<sub>t</sub></button>
+        <button type="button" id="btnV0Twice">v₀ = 2 v<sub>t</sub></button>
+      </div>
+      <p class="hint" id="v0Hint">v₀ &lt; v<sub>t</sub>: the particle accelerates. v₀ &gt; v<sub>t</sub>: drag exceeds W − B and the particle slows down to v<sub>t</sub>.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Drag law</h2></div>
+      <div class="radio-group" id="lawGroup">
+        <label class="radio"><input type="radio" name="law" value="stokes" checked>
+          <span><b>Stokes' law</b><small>F<sub>D</sub> = 3πµdv · Re ≤ 0.1</small></span></label>
+        <label class="radio"><input type="radio" name="law" value="newton">
+          <span><b>Newton's law</b><small>C<sub>D</sub> = 0.44 · 800 ≤ Re ≤ 2×10⁵</small></span></label>
+        <label class="radio"><input type="radio" name="law" value="sn">
+          <span><b>Schiller–Naumann</b><small>C<sub>D</sub> = 24/Re (1 + 0.15Re<sup>0.687</sup>) · Re ≤ 800</small></span></label>
+      </div>
+      <p class="override" id="overrideNote" hidden>Non-spherical mode is ON: <b>Haider–Levenspiel</b> overrides the selected spherical law. The selection above is kept as the spherical reference.</p>
+      <p class="hint" id="recLaw"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Physical effects</h2></div>
+
+      <div class="toggle-card" id="tcWall">
+        <label class="switch-row"><span class="switch"><input type="checkbox" id="wallOn"><i></i></span>
+          <span><b>Wall effects</b><small>Francis (1933)</small></span></label>
+        <div class="sub" id="wallSub" hidden>
+          <div class="kv"><span>d/D</span><b id="kLambda">—</b></div>
+          <div class="kv"><span>f<sub>w</sub> = [(1 − d/D)/(1 − 0.475d/D)]⁴</span><b id="kFw">—</b></div>
+          <p class="hint">Uses the column diameter D above.</p>
+        </div>
+      </div>
+
+      <div class="toggle-card" id="tcConc">
+        <label class="switch-row"><span class="switch"><input type="checkbox" id="concOn"><i></i></span>
+          <span><b>Concentration effects</b><small>Richardson–Zaki (1954)</small></span></label>
+        <div class="sub" id="concSub" hidden>
+          <label class="field"><span>Solids volume fraction φ</span>
+            <div class="inp"><input id="phi" type="number" step="0.01" min="0" max="0.99" value="0.1"><span class="unit">–</span></div></label>
+          <label class="field"><span>Exponent n</span>
+            <div class="inp"><input id="n" type="number" step="0.01" min="0" value="4.65"><span class="unit">–</span></div></label>
+          <div class="kv"><span>(1 − φ)ⁿ</span><b id="kRz">—</b></div>
+          <p class="hint">Empirical hindered-settling correction: the particle is treated as one representative member of a uniform suspension of volume fraction φ.</p>
+        </div>
+      </div>
+
+      <div class="toggle-card" id="tcShape">
+        <label class="switch-row"><span class="switch"><input type="checkbox" id="shapeOn"><i></i></span>
+          <span><b>Non-spherical particle</b><small>Haider–Levenspiel (1989)</small></span></label>
+        <div class="sub" id="shapeSub" hidden>
+          <div class="kv"><span>A</span><b id="kA">—</b></div>
+          <div class="kv"><span>B</span><b id="kB">—</b></div>
+          <div class="kv"><span>C</span><b id="kC">—</b></div>
+          <div class="kv"><span>K</span><b id="kK">—</b></div>
+          <div class="kv"><span>C<sub>D</sub> at terminal</span><b id="kCdHl">—</b></div>
+          <div class="kv"><span>v<sub>t</sub> shape vs sphere</span><b id="kShapeDiff">—</b></div>
+          <p class="hint">C<sub>D</sub> = 24/Re (1 + A·Re<sup>B</sup>) + C/(1 + K/Re). Set ψ in the Particle section.</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============================ CENTRE: COLUMN ============================ -->
+  <section class="panel centre" aria-label="Settling column">
+    <div class="card column-card">
+      <div class="card-head">
+        <h2>Settling column</h2>
+        <span class="badge" id="simStatus">Ready</span>
+      </div>
+      <div class="column-wrap">
+        <div class="canvas-box"><canvas id="column"></canvas></div>
+        <div class="readouts">
+          <div class="ro"><span>Velocity</span><b id="roV">0</b><small id="roVu">m/s</small></div>
+          <div class="ro"><span>% of terminal</span><b id="roPct">0 %</b></div>
+          <div class="ro"><span>Elapsed time</span><b id="roT">0 s</b></div>
+          <div class="ro"><span>Distance travelled</span><b id="roX">0 m</b></div>
+          <div class="ro"><span>Terminal velocity</span><b id="roVt">—</b></div>
+          <div class="ro terminal" id="roTerm" hidden>Terminal velocity reached (within 1 %)</div>
+        </div>
+      </div>
+      <div class="controls">
+        <button id="btnStart" class="primary">Start</button>
+        <button id="btnPause">Pause</button>
+        <button id="btnResume">Resume</button>
+        <button id="btnReset">Reset</button>
+        <label class="speed">Playback
+          <select id="speed">
+            <option value="auto" selected>Auto (≈ 8 s)</option>
+            <option value="0.01">0.01×</option>
+            <option value="0.1">0.1×</option>
+            <option value="1">1× real time</option>
+            <option value="10">10×</option>
+            <option value="100">100×</option>
+            <option value="1000">1000×</option>
+          </select>
+        </label>
+      </div>
+      <p class="hint center" id="speedNote"></p>
+      <p class="notice" id="paramNotice" hidden>Parameters changed: the run was stopped, recalculated and reset to t = 0. Press Start.</p>
+    </div>
+  </section>
+
+  <!-- ============================ RIGHT: RESULTS ============================ -->
+  <aside class="panel right" aria-label="Results">
+    <div class="card">
+      <div class="card-head"><h2>Results</h2>
+        <label class="unit-sel">velocity in <select id="vUnit"><option value="m/s">m/s</option><option value="mm/s">mm/s</option><option value="um/s">µm/s</option></select></label>
+      </div>
+      <div id="errorBox" class="errors" hidden></div>
+      <div class="status-row">
+        <div><span>Active drag law</span><b id="rLaw">—</b></div>
+        <div><span>Flow regime</span><b id="rRegime">—</b></div>
+        <div><span>Drag-law validity</span><b id="rValid" class="pill">—</b></div>
+      </div>
+
+      <h3>Forces</h3>
+      <table class="kvt" id="tForces"></table>
+      <h3>Dimensionless numbers</h3>
+      <table class="kvt" id="tFlow"></table>
+      <h3>Terminal settling velocity</h3>
+      <table class="kvt" id="tSettle"></table>
+      <h3>Transient motion (RK4)</h3>
+      <table class="kvt" id="tTrans"></table>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Warnings &amp; validity</h2></div>
+      <ul class="warnings" id="warnList"></ul>
+    </div>
+  </aside>
+</main>
+
+<!-- ============================ BOTTOM: PLOTS ============================ -->
+<section class="plots">
+  <div class="card plot-card">
+    <div class="card-head"><h2>Velocity vs time</h2>
+      <div class="seg" id="velMode"><button data-mode="full" class="on">Whole fall</button><button data-mode="transient">Acceleration</button></div></div>
+    <div id="plotV" class="plot"></div>
+  </div>
+  <div class="card plot-card">
+    <div class="card-head"><h2>Position vs time</h2></div>
+    <div id="plotX" class="plot"></div>
+  </div>
+  <div class="card plot-card">
+    <div class="card-head"><h2>Drag coefficient vs Reynolds number</h2></div>
+    <div id="plotCd" class="plot"></div>
+  </div>
+</section>
+<p class="plot-fallback" id="plotFallback" hidden>The graphs need the Plotly library, which loads from the internet. Connect and reload the page.</p>
+
+<section class="bottom-grid">
+  <div class="card export-card">
+    <div class="card-head">
+      <h2>Export results <span class="badge" id="exportRows">—</span></h2>
+      <button type="button" id="btnExportResults" class="primary">Export results (CSV)</button>
+    </div>
+    <p class="export-summary" id="exportSummary">—</p>
+    <p class="hint">Exports the time history of the current simulation:
+      Time (s), Particle diameter (m), Particle density (kg/m^3), Fluid density (kg/m^3), Velocity (m/s), Position (m), Reynolds number, Drag coefficient, Drag force (N) and Net force (N).
+      Only the acceleration phase is exported: one row per RK4 step from t = 0 to t<sub>99</sub>, when 99 % of the velocity change v₀ → v<sub>t</sub> has occurred. This is the same point at which the app reports "terminal velocity reached", and it equals 4.6τ for Stokes drag. If the particle reaches the end of the column first, the window ends there. The uniform motion at v<sub>t</sub> is not exported.
+      The file is regenerated from the current parameters and models at the moment you export.
+      Sign convention (notes p.2): downward is positive. Drag force is F<sub>D</sub>(v) in ρ<sub>p</sub>V<sub>p</sub> dv/dt = (ρ<sub>p</sub> − ρ<sub>f</sub>)gV<sub>p</sub> − F<sub>D</sub>(v), so Net force = (ρ<sub>p</sub> − ρ<sub>f</sub>)gV<sub>p</sub> − F<sub>D</sub> = m dv/dt.
+      With wall or concentration corrections on, F<sub>D</sub> is the effective drag used in the simulation.
+      C<sub>D</sub> = F<sub>D</sub>/(½ρ<sub>f</sub>v²A<sub>p</sub>), left blank at v = 0.</p>
+  </div>
+  <div class="card trials-card">
+    <div class="card-head">
+      <h2>Recorded trials <span class="badge" id="trialCount">0 trials</span></h2>
+      <div class="trial-actions">
+        <button type="button" id="btnRecord">Record current</button>
+        <button type="button" id="btnExportCsv" class="primary">Export CSV</button>
+        <button type="button" id="btnResetTrials">Reset trials</button>
+      </div>
+    </div>
+    <p class="trial-msg" id="trialMsg" hidden></p>
+    <div class="table-scroll">
+      <table class="trials">
+        <thead><tr>
+          <th>#</th><th>Drag scheme</th><th>Particle &amp; fluid</th><th class="num">d/D</th><th class="num">φ</th><th class="num">ψ</th>
+          <th class="num">Re</th><th class="num" id="vtHead">Terminal velocity (m/s)</th><th class="num">Time to travel H</th>
+        </tr></thead>
+        <tbody id="trialBody"></tbody>
+      </table>
+    </div>
+    <p class="hint">d/D, φ and ψ are the values the model used. When an effect is off, the cell shows its default, marked "off": d/D "—" (no wall modelled), φ = 0 (isolated particle), ψ = 1 (sphere). Pressing Start records one trial: the drag scheme used, the effects switched on, Re (the Reynolds number at which the drag law is evaluated) and the final terminal velocity after the enabled corrections. Pressing Start again with identical settings doesn't add a duplicate. The CSV export also contains every input, C<sub>D</sub>, Ar, the uncorrected v<sub>t</sub>, t<sub>95</sub>, t<sub>99</sub> and the validity status.</p>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Physical &amp; numerical checks</h2><span class="badge" id="checkSummary">—</span></div>
+    <ul class="checks" id="checkList"></ul>
+  </div>
+</section>
+
+<section class="card theory">
+  <details>
+    <summary><h2>Model, equations, assumptions &amp; sources</h2></summary>
+    <div class="theory-grid">
+      <div>
+        <h3>Governing equations (handwritten notes)</h3>
+        <ul>
+          <li>V<sub>p</sub> = πd³/6, A<sub>p</sub> = πd²/4 (p.1)</li>
+          <li>W = ρ<sub>p</sub>gV<sub>p</sub>, B = ρ<sub>f</sub>gV<sub>p</sub>, F<sub>D</sub> = ½C<sub>D</sub>ρ<sub>f</sub>v²A<sub>p</sub> (p.2)</li>
+          <li>ρ<sub>p</sub>V<sub>p</sub> dv/dt = (ρ<sub>p</sub> − ρ<sub>f</sub>)gV<sub>p</sub> − F<sub>D</sub>(v), dx/dt = v, v(0) = x(0) = 0 (p.2, p.6)</li>
+          <li>Stokes: F<sub>D</sub> = 3πµdv, v<sub>t</sub> = Δρgd²/(18µ) (p.3)</li>
+          <li>Newton: C<sub>D</sub> = 0.44, v<sub>t</sub> = √[4Δρgd/(3C<sub>D</sub>ρ<sub>f</sub>)] (p.3)</li>
+          <li>Schiller–Naumann: C<sub>D</sub> = 24/Re (1 + 0.15Re<sup>0.687</sup>), Re = ρ<sub>f</sub>vd/µ, solved iteratively with tolerance 10⁻⁶ (p.3–4)</li>
+          <li>Ar = ρ<sub>f</sub>Δρgd³/µ², Re<sub>Stokes</sub> = Ar/18 (p.4)</li>
+          <li>Francis: f<sub>w</sub> = [(1 − d/D)/(1 − 0.475d/D)]⁴; Richardson–Zaki: v<sub>h</sub> = v<sub>t</sub>(1 − φ)ⁿ (p.5)</li>
+          <li>Haider–Levenspiel C<sub>D</sub> and the A, B, C, K coefficients (p.5–6)</li>
+          <li>Stokes analytical solution: τ = ρ<sub>p</sub>d²/(18µ), v = v<sub>t</sub>(1 − e<sup>−t/τ</sup>), x = v<sub>t</sub>[t − τ(1 − e<sup>−t/τ</sup>)] (p.6)</li>
+          <li>Energy: P<sub>g</sub> = Δρ g V<sub>p</sub> v = P<sub>d</sub> = F<sub>D</sub>v at terminal velocity (p.7)</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Corrections to the notes</h3>
+        <ul>
+          <li>H-L coefficients C and K: the last terms use <b>ψ³</b> (−10.2599ψ³, +15.8855ψ³) as in Haider &amp; Levenspiel (1989). The notes write ψ², which gives non-physical drag for ψ &lt; 1.</li>
+          <li>p.2: "W = ρ<sub>p</sub>V<sub>p</sub>" is missing g (the boxed result is correct).</li>
+          <li>The notes' coefficient D<sub>n</sub> is called K here, so it isn't confused with the column diameter D.</li>
+          <li>Drag is applied as a signed force, F<sub>D</sub> ∝ |v|v, so it opposes the motion of a rising particle as well.</li>
+        </ul>
+        <h3>Not in the notes (stated choices)</h3>
+        <ul>
+          <li><b>Quasi-steady corrections:</b> in the ODE, F<sub>eff</sub>(v) = F<sub>D</sub>(v/f) with f = f<sub>w</sub>·f<sub>RZ</sub>. The motion then tends exactly to f·v<sub>t</sub>. For Stokes this is F<sub>D</sub>/f, giving τ<sub>eff</sub> = f·τ.</li>
+          <li>Combined corrections are multiplied together. This is an engineering approximation; the effects may interact.</li>
+          <li>t<sub>95</sub> = τ ln 20 ≈ 3.00τ and t<sub>99</sub> = τ ln 100 ≈ 4.61τ (from the notes' v(t)). For other drag laws these times are taken from the RK4 solution.</li>
+          <li>Haider–Levenspiel: d is the volume-equivalent diameter, used in both Re and A<sub>p</sub>.</li>
+          <li><b>Initial velocity v₀</b> (the notes use v₀ = 0): this is the entry speed in the direction of motion, v₀ ≥ 0. The equation of motion is unchanged; only v(0) = v₀ changes. With v₀ &gt; v<sub>t</sub>, drag exceeds W − B and the particle decelerates. The Stokes solution becomes v = v<sub>t</sub> + (v₀ − v<sub>t</sub>)e<sup>−t/τ</sup> and x = v<sub>t</sub>t + (v₀ − v<sub>t</sub>)τ(1 − e<sup>−t/τ</sup>). When v₀ ≠ 0, t<sub>95</sub> and t<sub>99</sub> are the times for 95 % and 99 % of the change v₀ → v<sub>t</sub>. For Stokes these are still τ ln 20 and τ ln 100.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Assumptions</h3>
+        <ul>
+          <li>Rigid particle released from rest in a quiescent, incompressible, isothermal Newtonian fluid.</li>
+          <li>Added-mass and Basset history forces are neglected, consistent with τ = ρ<sub>p</sub>d²/(18µ). Including added mass would give τ = (ρ<sub>p</sub> + ρ<sub>f</sub>/2)d²/(18µ).</li>
+          <li>No Brownian motion and no particle rotation or lateral drift. Without the wall toggle, the column wall is ignored.</li>
+          <li>RK4 with an adaptive step Δt = min(T, √(2H/a₀), m/(dF<sub>D</sub>/dv), H/|v|)/400, where T = v<sub>t</sub>/(|Δρ|g/ρ<sub>p</sub>) is the characteristic time (equal to τ for Stokes). The step is constant from rest and for Stokes drag; it is finer during a fast deceleration from v₀ ≫ v<sub>t</sub>. Once the acceleration is negligible, the motion is continued as exactly uniform.</li>
+        </ul>
+        <h3>Validity limits used for warnings</h3>
+        <ul>
+          <li>Stokes Re ≤ 0.1 (caution up to 1); Schiller–Naumann Re ≤ 800; Newton 800 ≤ Re ≤ 2×10⁵ (notes; drag crisis from Clift et al.)</li>
+          <li>Haider–Levenspiel Re &lt; 25 000 and ψ ≥ 0.67 (notes p.6)</li>
+          <li>Francis Re ≲ 0.2, d/D ≤ 0.97; caution when d/D &gt; 0.1 (Clift et al. 1978)</li>
+          <li>Richardson–Zaki φ ≤ 0.5; n = 4.65 only for Re &lt; 0.2 (Richardson &amp; Zaki 1954)</li>
+        </ul>
+        <h3>References</h3>
+        <ul class="refs">
+          <li>Francis, A.W. (1933). Wall effect in falling ball method for viscosity. <i>Physics</i> 4, 403–406.</li>
+          <li>Richardson, J.F. &amp; Zaki, W.N. (1954). Sedimentation and fluidisation: Part I. <i>Trans. Inst. Chem. Eng.</i> 32, 35–53.</li>
+          <li>Haider, A. &amp; Levenspiel, O. (1989). Drag coefficient and terminal velocity of spherical and nonspherical particles. <i>Powder Technol.</i> 58, 63–70.</li>
+          <li>Schiller, L. &amp; Naumann, A. (1933). <i>Z. Ver. Dtsch. Ing.</i> 77, 318–320.</li>
+          <li>Clift, R., Grace, J.R. &amp; Weber, M.E. (1978). <i>Bubbles, Drops and Particles</i>. Academic Press.</li>
+          <li>Bird, Stewart &amp; Lightfoot, <i>Transport Phenomena</i>, 2nd ed.; Welty et al., <i>Fundamentals of Momentum, Heat and Mass Transfer</i>, 5th ed.</li>
+        </ul>
+      </div>
+    </div>
+  </details>
+</section>
+
+<footer class="foot">Every result is computed live from the equations above. No result is hard-coded, and the particle never moves randomly.</footer>
+
+<script src="js/format.js?v=2026112204"></script>
+<script src="js/physics.js?v=2026112204"></script>
+<script src="js/solver.js?v=2026112204"></script>
+<script src="js/column.js?v=2026112204"></script>
+<script src="js/plots.js?v=2026112204"></script>
+<script src="js/checks.js?v=2026112204"></script>
+<script src="js/sliders.js?v=2026112204"></script>
+<script src="js/trials.js?v=2026112204"></script>
+<script src="js/export.js?v=2026112204"></script>
+<script src="js/app.js?v=2026112204"></script>
+</body>
+</html>
